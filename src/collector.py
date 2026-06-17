@@ -32,15 +32,15 @@ class PionexCollector:
         self,
         symbol: str = "BTC_USDT_PERP",
         output_dir: str = "data/raw",
-        save_to_db: bool = False,
+        save_to_db: bool = True,
         save_to_jsonl: bool = False,
     ):
         self.symbol = symbol
         self.output_dir = output_dir
         self.client = PionexClient()
-        self.db = SupabaseDB()
-        self.save_to_db = True
-        self.save_to_jsonl = True
+        self.save_to_db = save_to_db
+        self.db = SupabaseDB() if self.save_to_db else None
+        self.save_to_jsonl = save_to_jsonl
 
         os.makedirs(self.output_dir, exist_ok=True)
 
@@ -318,7 +318,7 @@ if __name__ == "__main__":
         symbol="BTC_USDT_PERP",
         output_dir="data/raw",
         save_to_db=True,
-        save_to_jsonl=True,
+        save_to_jsonl=False,
     )
 
     collector.run(max_seconds=None)
