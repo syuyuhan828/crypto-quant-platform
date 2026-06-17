@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional
 
 from Pionex_client import PionexClient, PionexAPIError
 from db import SupabaseDB
+import health_state
+from health_check import start_health_server
 
 
 class PionexCollector:
@@ -219,6 +221,10 @@ class PionexCollector:
                 如果指定秒數，例如 60，代表跑 60 秒後停止。
         """
 
+        # Start the health-check HTTP server in a background thread so
+        # Railway (or any external monitor) can poll GET /health.
+        start_health_server()
+
         print("=== Pionex Collector Started ===")
         print(f"symbol: {self.symbol}")
         print(f"output_dir: {self.output_dir}")
@@ -254,6 +260,9 @@ class PionexCollector:
 
                     # API 成功後立刻標記已執行，避免 DB 壞掉時狂打 API
                     self.mark_run(api_name)
+
+                    # Notify the health-check server that a fetch just succeeded.
+                    health_state.record_fetch()
 
                     db_row = self.client.flatten_for_db(result)
 
