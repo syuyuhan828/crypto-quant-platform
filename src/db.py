@@ -21,6 +21,7 @@ class SupabaseDB:
 
     def __init__(self, database_url: Optional[str] = None):
         self.database_url = database_url or os.getenv("SUPABASE_DB_URL")
+        
 
         if not self.database_url:
             raise ValueError(

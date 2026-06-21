@@ -146,7 +146,7 @@ class PionexCollector:
     def fetch_depth(self) -> Dict[str, Any]:
         return self.client.depth(
             symbol=self.symbol,
-            limit=50,
+            limit=1000,
         )
 
     def fetch_trades(self) -> Dict[str, Any]:
@@ -173,13 +173,13 @@ class PionexCollector:
         return self.client.klines(
             symbol=self.symbol,
             interval="1M",
-            limit=500,
+            limit=50,
         )
 
     def fetch_funding_rates(self) -> Dict[str, Any]:
         return self.client.funding_rates(
             symbol=self.symbol,
-            limit=100,
+            limit=10,
         )
 
     def fetch_one(self, api_name: str) -> Dict[str, Any]:
