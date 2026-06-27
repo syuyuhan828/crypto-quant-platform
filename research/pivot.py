@@ -609,14 +609,14 @@ def plot_regime(df, regime_col="motion_state", title="Choose A Title"):
 
 if __name__ == "__main__":
     
-    start = "2026-06-21"
+    start = "2025-06-23"
     start_ms = "2026-06-21 20:10:00"
-    end = "2026-06-23"
-    end_ms = "2026-06-21 20:30:00"
+    end = "2025-10-23"
+    end_ms = "2026-04-21 20:30:00"
 
     RANDOM_SEED = 28
 
-    df = get_klines(start=start, end=end, interval="1H")
+    df = get_klines(start=start, end=end, interval="1D")
     # df = get_klines(start_time=start_ms, end_time=end_ms, is_experiment=False)
     df = get_pivot(df, False)
     df_structure = add_pivot(df)

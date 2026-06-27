@@ -245,6 +245,107 @@ Extensive experiments using different random initializations show that the learn
 
 ---
 
+# Hidden Markov Model Considerations
+
+Hidden Markov Models are employed as an unsupervised method for discovering latent market states.
+
+However, several important considerations should be noted.
+
+## Sensitivity to Initialization
+
+Gaussian HMM is optimized using the Expectation-Maximization (EM) algorithm.
+
+Different random initializations may converge to different local optima.
+
+To evaluate robustness, we performed extensive experiments using hundreds of different random seeds.
+
+The learned state means remained remarkably stable across random initializations, suggesting that the discovered market states originate from the feature space rather than random initialization.
+
+
+
+## Choice of Number of States
+
+This framework currently assumes three latent states.
+
+- Bullish
+- Bearish
+- Neutral
+
+However, financial markets are highly non-stationary.
+
+During prolonged bear markets, forcing three states often results in
+
+- Strong Bear
+- Weak Bear
+- Neutral
+
+instead of
+
+- Bull
+- Bear
+- Sideways.
+
+Therefore, the semantic interpretation of each hidden state depends on the observation window.
+
+Future work will investigate adaptive state numbers and multi-scale regime discovery.
+
+
+## Window Dependency
+
+Hidden regimes depend strongly on the selected training interval.
+
+Different market cycles produce different latent structures.
+
+Rather than assuming a universal regime, this framework studies
+
+- local regimes
+- multi-scale regimes
+- adaptive regimes
+
+across different market environments.
+
+To illustrate, we choose a 1-day interval of **2025-12-23 ~ 2026-06-23** of BTC-USD, and we get the result of the HMM
+| State  | return_to_previous_pivot | pivot_direction | structure_state |
+| -------| -----------------------: | --------------: | --------------: |
+| 0      |      -9.841982           |     -0.083333   |   -1929.545580  |
+| 1      |       1.586896           |     0.031579    |   166.375937    |
+| 2      |       -0.152460          |     0.0         |   -26.618025    |
+
+Though exhibits a rather stable result, same on 1000 random seed test, the result is not satisfying.
+Shown in the figure
+![Structure](figure\fail_on_hmm_window.png)
+This figure shows that the HMM model though work well on capturing the market downward movemnt, it did not do well on capturing the upward-movement
+
+On the other hand, if we choose an interval that endows with **up and down** movement in the market, the result is satisfying,
+Also, to demonstrate, a 1-day interval 
+
+The Mean Matrix,
+
+|structure_state | return_to_previous_pivot | pivot_direction | dominant_channel_slope |
+|----------------| ------------------------:| ---------------:| ----------------------:|                                         
+|    0.0         |          -6.486127       |    -0.153846    |      -1720.696085      |
+|    1.0         |           8.702933       |     0.272727    |       964.173329       |
+|    2.0         |           -0.099018      |     0.000000    |       66.205147        |
+
+The classification is shown in figure:
+![Structure](figure\success_on_hmm_window.png)                       
+
+
+## Robustness Analysis
+
+The proposed framework was evaluated using over one thousand different random initializations.
+
+For both
+
+- Structural HMM
+- Dynamic HMM
+
+the estimated state means remained highly consistent.
+
+This suggests that the proposed feature engineering produces naturally separable latent structures, reducing the dependence on EM initialization.
+
+---
+
 # Market Force Hypothesis
 
 Traditional quantitative models attempt to predict prices directly.
