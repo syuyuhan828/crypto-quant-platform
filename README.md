@@ -311,13 +311,21 @@ To illustrate, we choose a 1-day interval of **2025-12-23 ~ 2026-06-23** of BTC-
 | 1      |       1.586896           |     0.031579    |   166.375937    |
 | 2      |       -0.152460          |     0.0         |   -26.618025    |
 
-Though exhibits a rather stable result, same on 1000 random seed test, the result is not satisfying.
-Shown in the figure
-![HMM1](figure\fail_on_hmm_window.png)
-This figure shows that the HMM model though work well on capturing the market downward movemnt, it did not do well on capturing the upward-movement
+Although the hidden-state means remain remarkably stable across 1,000 different random initializations, the resulting market classification is not satisfactory.  
 
-On the other hand, if we choose an interval that endows with **up and down** movement in the market, the result is satisfying,
-Also, to demonstrate, a 1-day interval 
+
+Shown in the figure: 
+**Figure 1.**
+Structural HMM trained on a prolonged bearish market.
+Although the state means are stable across random initializations, the learned states fail to separate bullish and sideways regimes.
+
+![Figure 1](figures/fail_on_hmm_window.png)
+
+
+As shown below, the HMM successfully captures prolonged downward market regimes but fails to identify meaningful upward regimes. 
+
+
+However, when the training window contains both bullish and bearish market phases, the resulting hidden states become much more interpretable. For comparison, we train the HMM using daily BTC-USD data over the period **2025-06-23 – 2025-10-23**.
 
 The Mean Matrix,
 
@@ -327,8 +335,11 @@ The Mean Matrix,
 |    1.0         |           8.702933       |     0.272727    |       964.173329       |
 |    2.0         |           -0.099018      |     0.000000    |       66.205147        |
 
-The classification is shown in figure:
-![HMM2](figure\success_on_hmm_window.png)                       
+**Figure 2.**
+Structural HMM trained on a market window containing both upward and downward trends.
+The resulting hidden states clearly correspond to bearish, bullish, and neutral market structures.
+
+![Figure 2](figures/success_on_hmm_window.png)                     
 
 
 ## Robustness Analysis
