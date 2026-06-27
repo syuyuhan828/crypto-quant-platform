@@ -343,7 +343,7 @@ def get_pivot(df: pd.DataFrame, show_plot: bool=False):
 
     return df[["Open", "High", "Low", "Close", "Volume", "pivot_high", "pivot_low"]]
 
-def pivot_return(df):
+def add_pivot(df):
     df = df.copy()
     df["return_to_previous_pivot"] = np.nan
     prev_high = np.nan
@@ -368,20 +368,116 @@ def pivot_return(df):
         np.where(df['pivot_low'].notna(), -1, 0)
     )
 
-    df['bars_between_pivots'] = np.nan
-    last_pivot_pos = None
-    for pos, (idx, row) in enumerate(df.iterrows()):
-        is_pivot = pd.notna(row["pivot_high"]) or pd.notna(row["pivot_low"])
-
-        if is_pivot:
-            if last_pivot_pos is not None:
-                df.loc[idx, "bars_between_pivots"] = pos-last_pivot_pos
-            
-            last_pivot_pos = pos
     
     df['price_diff'] = df.Close.pct_change()
     
     return df[["Open", "High", "Low", "Close", "Volume", "pivot_high", "pivot_low", "return_to_previous_pivot", "pivot_direction","price_diff"]]
+
+
+def add_motions(df, ohlc="Close"):
+    df = df.copy()
+
+    df["position"] = df[ohlc]
+    df["velocity"] = df["position"].diff()
+    df["accelerate"] = df["velocity"].diff()
+    df["jerk"] = df["accelerate"].diff()
+
+    return df.dropna(subset=["velocity", "accelerate", "jerk"])
+
+def motion_feature(df):
+    df = df.copy()
+
+    df = df[
+        df["pivot_high"].notna() | df["pivot_low"].notna()
+    ].copy()
+
+    df = add_motions(df)
+    features = [
+        "velocity",
+        "accelerate",
+        "jerk",
+    ]
+    scalar = StandardScaler()
+    X = scalar.fit_transform(df[features])
+    model = GaussianHMM(
+        n_components=3, 
+        covariance_type="full",
+        n_iter=1000,
+        random_state=42,
+        init_params="",
+        params="stmc"
+    )
+    model.startprob_ = np.array([1/3, 1/3, 1/3])
+
+    model.transmat_ = np.array([
+        [0.80, 0.10, 0.10],
+        [0.10, 0.80, 0.10],
+        [0.10, 0.10, 0.80],
+    ])
+
+    model.means_ = np.array([
+        [-1.0, -1.0, -1.0],   # downward
+        [ 1.0,  1.0,  1.0],   # upward
+        [ 0.0,  0.0,  0.0],   # sideways
+    ])
+
+    model.covars_ = np.array([
+        np.eye(len(features)),
+        np.eye(len(features)),
+        np.eye(len(features)),
+    ])
+    model.fit(X)
+    df['motion_state'] = model.predict(X)
+    print("Market Dynamic Regime:", df.groupby("motion_state")[features].mean())
+    return df
+    # print(df.groupby("state")[features].mean())
+
+
+def structure_feature(df):
+    df = df.copy()
+    features = [
+        "return_to_previous_pivot",
+        "pivot_direction",
+        'price_diff'
+    ]
+
+    df = df.dropna(subset=features)
+    scalar = StandardScaler()
+    X = scalar.fit_transform(df[features])
+    model = GaussianHMM(
+        n_components=3, 
+        covariance_type="full",
+        n_iter=1000,
+        random_state=42,
+        init_params="",
+        params="stmc"
+    )
+    model.startprob_ = np.array([1/3, 1/3, 1/3])
+
+    model.transmat_ = np.array([
+        [0.80, 0.10, 0.10],
+        [0.10, 0.80, 0.10],
+        [0.10, 0.10, 0.80],
+    ])
+
+    model.means_ = np.array([
+        [-1.0, -1.0, -1.0],   # downward
+        [ 1.0,  1.0,  1.0],   # upward
+        [ 0.0,  0.0,  0.0],   # sideways
+    ])
+
+    model.covars_ = np.array([
+        np.eye(len(features)),
+        np.eye(len(features)),
+        np.eye(len(features)),
+    ])
+    model.fit(X)
+    df['structure_state'] = model.predict(X)
+    print("Market Structure Regime:", df.groupby("structure_state")[features].mean())
+
+
+    return df
+
 
 
 if __name__ == "__main__":
@@ -394,28 +490,10 @@ if __name__ == "__main__":
     df = get_klines(start=start, end=end, interval="1D")
     # df = get_klines(start_time=start_ms, end_time=end_ms, is_experiment=False)
     df = get_pivot(df, False)
-    df = pivot_return(df)
+    df_structure = add_pivot(df)
+    df_motion = add_motions(df)
 
-    pivot_df = df[
-        df["pivot_high"].notna() | df["pivot_low"].notna()
-    ].copy()
-
-    # 常數 一階微分 二階微分
-    features = [
-        "return_to_previous_pivot",
-        "pivot_direction",
-        'price_diff'
-    ]
-
-    pivot_df = pivot_df.dropna(subset=features)
-    scalar = StandardScaler()
-    X = scalar.fit_transform(pivot_df[features])
-    model = GaussianHMM(
-        n_components=3, 
-        covariance_type="full",
-        n_iter=1000,
-        random_state=42,
-    )
-    model.fit(X)
-    pivot_df['state'] = model.predict(X)
-    print(pivot_df.groupby("state")[features].mean())
+    df_structure = structure_feature(df_structure)
+    df_motion = motion_feature(df_motion)
+    
+    
