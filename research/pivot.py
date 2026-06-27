@@ -368,10 +368,72 @@ def add_pivot(df):
         np.where(df['pivot_low'].notna(), -1, 0)
     )
 
+    #find channel
+    df["high_slope"] = np.nan
+    df["low_slope"] = np.nan
+    df["dominant_channel_slope"] = np.nan
+    df["dominant_channel_source"] = None
+
+    high_idx = df.index[df["pivot_high"].notna()].tolist()
+    low_idx = df.index[df["pivot_low"].notna()].tolist()
+
+    #high slope
+    for i in range(len(high_idx) - 1):
+        start = high_idx[i]
+        end = high_idx[i+1]
+
+        p0 = df.loc[start, "pivot_high"]
+        p1 = df.loc[end, "pivot_high"]
+
+        start_pos = df.index.get_loc(start)
+        end_pos = df.index.get_loc(end)
+        bars = end_pos - start_pos
+
+        if bars == 0:
+            continue
+        slope = (p1 - p0) / bars
+        df.loc[start:end, "high_slope"] = slope
+
+    #end slope
+    for i in range(len(low_idx)-1):
+        start = low_idx[i]
+        end = low_idx[i+1]
+
+        p0 = df.loc[start, "pivot_low"]
+        p1 = df.loc[end, "pivot_low"]
+
+        start_pos = df.index.get_loc(start)
+        end_pos = df.index.get_loc(end)
+        bars = end_pos - start_pos
+
+        if bars == 0:
+            continue
+
+        slope = (p1 -p0) / bars
+        df.loc[start: end, "low_slope"] = slope
+
     
-    df['price_diff'] = df.Close.pct_change()
+    for idx, row in df.iterrows():
+        hs = row["high_slope"]
+        ls=  row["low_slope"]
+
+        if pd.notna(hs) and pd.notna(ls):
+            if abs(hs) >= abs(ls):
+                df.loc[idx, "dominant_channel_slope"] = hs
+                df.loc[idx, "dominant_channel_source"] = "high"
+            else:
+                df.loc[idx, "dominant_channel_slope"] = ls
+                df.loc[idx, "dominant_channel_source"] = "low"
+
+        elif pd.notna(hs):
+            df.loc[idx, "dominant_channel_slope"] = hs
+            df.loc[idx, "dominant_channel_source"] = "high"
+
+        elif pd.notna(ls):
+            df.loc[idx, "dominant_channel_slope"] = ls
+            df.loc[idx, "dominant_channel_source"] = "low"
     
-    return df[["Open", "High", "Low", "Close", "Volume", "pivot_high", "pivot_low", "return_to_previous_pivot", "pivot_direction","price_diff"]]
+    return df[["Open", "High", "Low", "Close", "Volume", "pivot_high", "pivot_low", "return_to_previous_pivot", "pivot_direction", "dominant_channel_slope", "dominant_channel_source"]]
 
 
 def add_motions(df, ohlc="Close"):
@@ -384,26 +446,26 @@ def add_motions(df, ohlc="Close"):
 
     return df.dropna(subset=["velocity", "accelerate", "jerk"])
 
-def motion_feature(df):
+def motion_feature(df, random_seed=42):
     df = df.copy()
-
-    df = df[
-        df["pivot_high"].notna() | df["pivot_low"].notna()
-    ].copy()
-
     df = add_motions(df)
+   
     features = [
         "velocity",
         "accelerate",
         "jerk",
     ]
+
+    valid_idx = df.dropna(subset=features).index
+    train_df = df.loc[valid_idx].copy()
+    
     scalar = StandardScaler()
-    X = scalar.fit_transform(df[features])
+    X = scalar.fit_transform(train_df[features])
     model = GaussianHMM(
         n_components=3, 
         covariance_type="full",
         n_iter=1000,
-        random_state=42,
+        random_state=random_seed,
         init_params="",
         params="stmc"
     )
@@ -427,28 +489,37 @@ def motion_feature(df):
         np.eye(len(features)),
     ])
     model.fit(X)
-    df['motion_state'] = model.predict(X)
-    print("Market Dynamic Regime:", df.groupby("motion_state")[features].mean())
+    
+    df['motion_state'] = np.nan
+    df.loc[valid_idx, "motion_state"] = model.predict(X)
+    df["motion_state"] = df["motion_state"].ffill().bfill()
+
+    print("Market Dynamic Regime:", df.groupby("motion_state")
+          [features].mean())
+    if not model.monitor_.converged:
+        raise ValueError(f"E: Model with random seed {random_seed} is not converging")
+    
     return df
-    # print(df.groupby("state")[features].mean())
 
 
-def structure_feature(df):
+def structure_feature(df, random_seed=42):
     df = df.copy()
     features = [
         "return_to_previous_pivot",
         "pivot_direction",
-        'price_diff'
+        "dominant_channel_slope",
     ]
 
-    df = df.dropna(subset=features)
+    valid_idx = df.dropna(subset=features).index
+    train_df = df.loc[valid_idx].copy()
+
     scalar = StandardScaler()
-    X = scalar.fit_transform(df[features])
+    X = scalar.fit_transform(train_df[features])
     model = GaussianHMM(
         n_components=3, 
         covariance_type="full",
         n_iter=1000,
-        random_state=42,
+        random_state=random_seed,
         init_params="",
         params="stmc"
     )
@@ -472,28 +543,101 @@ def structure_feature(df):
         np.eye(len(features)),
     ])
     model.fit(X)
-    df['structure_state'] = model.predict(X)
+    df['structure_state'] = np.nan
+    df.loc[valid_idx, "structure_state"] = model.predict(X)
+    df["structure_state"] = df["structure_state"].ffill().bfill()
     print("Market Structure Regime:", df.groupby("structure_state")[features].mean())
-
-
+    
+    if not model.monitor_.converged:
+        raise ValueError(f"E: Model with random seed {random_seed} is not converging")
+    
     return df
+
+def plot_regime(df, regime_col="motion_state", title="Choose A Title"):
+    
+    if regime_col not in ["motion_state", "structure_state"]:
+        raise ValueError("E: Not legitimate value, try \"motion_state\" or \"structure_state\"")
+    
+    df = df.copy()
+    plot_df = df[["Open", "High", "Low", "Close", "Volume"]].copy()
+
+    fig, axes = mpf.plot(
+        plot_df,
+        type="candle",
+        volume=False,
+        style="yahoo",
+        figsize=(14, 8),
+        returnfig=True,
+        title=title,
+    )
+
+    ax = axes[0]
+
+    color_map = {
+        0: "red",
+        1: "green",
+        2: "gray",
+    }
+
+    regime = df[regime_col].reindex(plot_df.index).ffill().values
+
+    start_i = 0
+    current_state = regime[0]
+
+    for i in range(1, len(regime)):
+        if regime[i] != current_state:
+            ax.axvspan(
+                start_i,
+                i,
+                color=color_map.get(current_state, "gray"),
+                alpha=0.15,
+            )
+
+            start_i = i
+            current_state = regime[i]
+
+    ax.axvspan(
+        start_i,
+        len(regime) - 1,
+        color=color_map.get(current_state, "gray"),
+        alpha=0.15,
+    )
+
+    plt.show()
 
 
 
 if __name__ == "__main__":
     
-    start = "2024-06-23"
+    start = "2026-06-21"
     start_ms = "2026-06-21 20:10:00"
     end = "2026-06-23"
     end_ms = "2026-06-21 20:30:00"
 
-    df = get_klines(start=start, end=end, interval="1D")
+    RANDOM_SEED = 28
+
+    df = get_klines(start=start, end=end, interval="1H")
     # df = get_klines(start_time=start_ms, end_time=end_ms, is_experiment=False)
     df = get_pivot(df, False)
     df_structure = add_pivot(df)
     df_motion = add_motions(df)
 
-    df_structure = structure_feature(df_structure)
-    df_motion = motion_feature(df_motion)
+    # loop random seed to see robustness
+    df_structure = structure_feature(df_structure, random_seed=RANDOM_SEED)
+    df_motion = motion_feature(df_motion, random_seed=RANDOM_SEED)
+
+    # 3 state market won't hold for a single-direction market, e.g. 2025-06-23 ~ 2026-06-23
+
+    plot_regime(
+        df_motion, 
+        regime_col = "motion_state",
+        title = "Market Regime: Dynamic",
+    )
+
+    plot_regime(
+        df_structure,
+        regime_col = "structure_state",
+        title="Market Regime: Structural"
+    )
     
     
