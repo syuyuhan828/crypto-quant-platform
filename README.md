@@ -319,7 +319,7 @@ Shown in the figure:
 Structural HMM trained on a prolonged bearish market.
 Although the state means are stable across random initializations, the learned states fail to separate bullish and sideways regimes.
 
-![Figure 1](figures/fail_on_hmm_window.png)
+![Figure 1](figure/fail_on_hmm_window.png)
 
 
 As shown below, the HMM successfully captures prolonged downward market regimes but fails to identify meaningful upward regimes. 
@@ -339,7 +339,7 @@ The Mean Matrix,
 Structural HMM trained on a market window containing both upward and downward trends.
 The resulting hidden states clearly correspond to bearish, bullish, and neutral market structures.
 
-![Figure 2](figures/success_on_hmm_window.png)                     
+![Figure 2](figure/success_on_hmm_window.png)                     
 
 
 ## Robustness Analysis
