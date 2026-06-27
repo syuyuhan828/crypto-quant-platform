@@ -127,8 +127,6 @@ def get_data_interval(api: str, start_time, end_time, page_size, chunk_minutes=1
     
     return df
 
-
-    db = get_supabase()
     
     
 # research used function
