@@ -1,136 +1,218 @@
-# Pionex Futures Market Data Collector
+# Market Dynamics Research Framework
 
-A Python-based utility to fetch crypto perpetual futures market data from the Pionex public API and perform order flow imbalance (OFI) research.
+A quantitative research framework for cryptocurrency perpetual futures that models **market microstructure**, **market structure**, and **market dynamics**.
 
-## Purpose
-- Pull crypto perpetual futures market data from Pionex public API (**no API key required**).
-- Collects and aggregates:
-  1. Order book depth
-  2. Recent taker-side trades
-  3. Klines
-  4. Book ticker
-  5. Mark/index price and next funding rate
-  6. Historical funding rates
-  7. Open interest
-  8. Simple imbalance features (e.g., Order Flow Imbalance, OFI)
+Rather than directly predicting future prices, this project investigates **how order book events propagate through the market and ultimately drive price evolution**.
 
 ---
 
-## Research Findings (Updated: 2026-06-24)
+# Motivation
 
-Based on the collected data, we conducted an empirical analysis on the relationship between **Order Flow Imbalance (OFI)** and **Mid-Price Changes ($\Delta \text{mid\_tick}$)** across multiple timescales.
+Most quantitative trading models attempt to learn
 
-### 1. Contemporaneous OFI Analysis
-We tested the simultaneous impact of OFI on price movements. The results show a **strong positive correlation** across all timescales, with explanatory power ($R^2$) increasing as the time window widens.
-
-| Frequency | No. Observations | Correlation ($r$) | $R^2$ | Beta ($\beta$) | p-value |
-| :---: | :---: | :---: | :---: | :---: | :---: |
-| **5s** | 359 | 0.7508 | 0.5638 | 2.1799 | $2.74 \times 10^{-66}$ |
-| **10s** | 179 | 0.8114 | 0.6583 | 2.2506 | $3.91 \times 10^{-43}$ |
-| **30s** | 59 | 0.8210 | 0.6741 | 2.2911 | $1.69 \times 10^{-15}$ |
-| **1min** | 29 | 0.8970 | 0.8046 | 2.4673 | $4.51 \times 10^{-11}$ |
-
-> **Key Takeaway:** At the 1-minute scale, contemporaneous OFI explains over **80%** of the mid-price variance ($R^2 = 0.8046$).
-
-#### 5s OLS Regression Snapshot
-```text
-Dep. Variable: delta_mid_tick         R-squared: 0.564
-Method:        Least Squares          Adj. R-squared: 0.563
-F-statistic:   461.4                  Prob (F-statistic): 2.74e-66
-------------------------------------------------------------------------------
-               coef    std err          t      P>|t|      [0.025      0.975]
-------------------------------------------------------------------------------
-const          0.4487      1.791      0.251      0.802      -3.074       3.971
-OFI_k          2.1799      0.101     21.480      0.000       1.980       2.379
-
-
-# Market Dynamics Hypothesis
-
-## Motivation
-
-Traditional quantitative trading models focus on predicting the next price movement directly,
-
-\[
+[
 P_{t+1}=f(X_t)
-\]
+]
 
-where \(X_t\) denotes all observable market information.
+where (X_t) represents observable market information.
 
-However, this approach ignores an important question:
+Although these models may achieve good predictive performance, they rarely explain **why prices move**.
 
-> **What is the mechanism that causes prices to move?**
+This project instead asks a more fundamental question:
 
-Instead of predicting the price itself, we hypothesize that financial markets behave as a dynamic system, where market microstructure continuously exerts "forces" on prices.
+> **What is the underlying mechanism that transforms order book events into price movements?**
 
----
-
-# Physics Analogy
-
-Classical mechanics describes the evolution of an object as
-
-\[
-F=ma
-\]
-
-where
-
-- Position
-- Velocity
-- Acceleration
-
-describe different orders of motion.
-
-We propose a similar hierarchy for financial markets.
+Our hypothesis is that financial markets behave as a dynamic system continuously driven by market microstructure.
 
 ---
 
-# Level 0 — Position
+# Project Architecture
 
-The market price itself.
-
-\[
-P_t
-\]
-
-Python
-
-```python
-price = Close
+```
+                  Pionex Public API
+                         │
+                         ▼
+                Raw Market Data
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+        ▼                ▼                ▼
+   Order Book         Trades          Klines
+        │                │                │
+        └────────────────┼────────────────┘
+                         ▼
+               Market Structure
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+        ▼                ▼                ▼
+   Swing Detection   Pivot Detection   Trend Features
+                         │
+                         ▼
+           Market Microstructure Features
+                         │
+      ┌──────────────────┼──────────────────┐
+      │                  │                  │
+      ▼                  ▼                  ▼
+     OFI          Order Book Imbalance   Liquidity
+      │                  │                  │
+      └──────────────────┼──────────────────┘
+                         ▼
+               Hidden Market Dynamics
+                         │
+                         ▼
+                 Market Regime (HMM)
 ```
 
 ---
 
-# Level 1 — Velocity
+# Data Collection
 
-The first derivative of price.
+The framework continuously collects market data directly from the **Pionex Public API** (no API key required).
 
-\[
+Collected datasets include
+
+* Order Book Depth
+* Recent Trades
+* Klines
+* Book Ticker
+* Mark Price
+* Index Price
+* Funding Rates
+* Open Interest
+
+All datasets are synchronized into a unified database for quantitative analysis.
+
+---
+
+# Market Structure
+
+Instead of analyzing every individual candle, the framework first extracts a higher-level market representation.
+
+Current structural features include
+
+* Swing High / Swing Low
+* Confirmed Pivot High / Pivot Low
+* Pivot Return
+* Pivot Direction
+* Trend Segmentation
+
+This representation removes a large amount of market noise while preserving the dominant market structure.
+
+---
+
+# Empirical Findings
+
+## Order Flow Imbalance
+
+Using synchronized order book and trade data, we investigated the contemporaneous relationship between
+
+* Order Flow Imbalance (OFI)
+* Mid-price changes
+
+Across multiple time scales, OFI exhibits a consistently strong positive relationship with price movement.
+
+| Frequency | Correlation |        R² |
+| --------- | ----------: | --------: |
+| 5 s       |       0.751 |     0.564 |
+| 10 s      |       0.811 |     0.658 |
+| 30 s      |       0.821 |     0.674 |
+| 1 min     |   **0.897** | **0.805** |
+
+These results indicate that OFI explains more than **80%** of the contemporaneous one-minute mid-price variation.
+
+---
+
+# Market Dynamics Hypothesis
+
+Instead of modeling
+
+[
+Price=f(X)
+]
+
+we propose a hierarchical market dynamics framework inspired by classical mechanics.
+
+```
+Market Microstructure
+          │
+          ▼
+      Market Force
+          │
+          ▼
+     Acceleration
+          │
+          ▼
+       Velocity
+          │
+          ▼
+         Price
+```
+
+Mathematically,
+
+[
+\boxed{
+\text{Order Book}
+\rightarrow
+F
+\rightarrow
+a
+\rightarrow
+v
+\rightarrow
+P
+}
+]
+
+where
+
+* **Price** represents market position.
+* **Velocity** corresponds to returns.
+* **Acceleration** measures changes in returns.
+* **Market Force** is generated by order book dynamics.
+
+---
+
+# Motion Hierarchy
+
+## Position
+
+[
+P_t
+]
+
+Market price.
+
+---
+
+## Velocity
+
+[
 v_t
-=
-\frac{P_t-P_{t-1}}{P_{t-1}}
-\]
+===
 
-which corresponds to
+\frac{P_t-P_{t-1}}{P_{t-1}}
+]
+
+Python
 
 ```python
 velocity = Close.pct_change()
 ```
 
-This is the traditional financial return.
-
 ---
 
-# Level 2 — Acceleration
+## Acceleration
 
-The first derivative of return (second derivative of price).
-
-\[
+[
 a_t
-=
-v_t-v_{t-1}
-\]
+===
 
-or
+v_t-v_{t-1}
+]
+
+Python
 
 ```python
 acceleration = velocity.diff()
@@ -138,185 +220,107 @@ acceleration = velocity.diff()
 
 Acceleration measures how rapidly market momentum changes.
 
-Large acceleration often appears before explosive breakouts.
-
 ---
 
-# Level 3 — Jerk
+## Jerk
 
-The derivative of acceleration.
-
-\[
+[
 j_t
-=
+===
+
 a_t-a_{t-1}
-\]
+]
+
+Python
 
 ```python
 jerk = acceleration.diff()
 ```
 
-This describes sudden changes of market acceleration.
-
-Although rarely studied in finance, it may contain useful information before volatility expansion.
+Jerk represents sudden changes in acceleration and may contain useful information prior to volatility expansion.
 
 ---
 
-# Market Microstructure as Force
+# Market Forces
 
-Instead of viewing order book information as direct predictors of price,
+Instead of treating order book variables as direct predictors of price, this framework interprets them as **forces acting on the market**.
 
-we interpret them as **market forces**.
+Current and planned force variables include
 
-Potential force variables include
+* Order Flow Imbalance (OFI)
+* Order Book Imbalance
+* Hump Overlap
+* Liquidity Profile
+* Spread
+* Open Interest
+* Market Order Flow
 
-- Order Flow Imbalance (OFI)
-- Order Book Imbalance
-- Hump Overlap
-- Liquidity
-- Spread
-- Open Interest
-- Market Order Flow
-
-Collectively,
-
-\[
-F_t
-=
-f(\text{Order Book})
-\]
-
----
-
-# Proposed Market Dynamics
-
-Rather than
-
-\[
-Price=f(X)
-\]
-
-we propose
-
-\[
-F_t
-\rightarrow
-a_t
-\rightarrow
-v_t
-\rightarrow
-P_t
-\]
-
-which can be interpreted as
-
-```
-Order Book
-      │
-      ▼
- Market Force
-      │
-      ▼
-Acceleration
-      │
-      ▼
- Velocity
-      │
-      ▼
-  Price
-```
-
-This hypothesis suggests that market microstructure influences acceleration first, acceleration changes velocity, and velocity ultimately determines price evolution.
-
----
-
-# Pivot-Level Dynamics
-
-To capture market structure, we define pivot-based features.
-
-## Pivot Return
-
-The percentage movement between two consecutive confirmed pivots.
-
-Represents the velocity of a swing.
-
----
-
-## Pivot Direction
-
-\[
-\{-1,0,+1\}
-\]
-
-where
-
-- +1 = Upward Pivot
-- -1 = Downward Pivot
-- 0 = No Pivot
-
----
-
-## Additional Local Dynamics
-
-Bar-level quantities include
-
-- Return
-- Velocity
-- Acceleration
-- Jerk
-
-These describe the local dynamics occurring between pivots.
+The long-term objective is to understand how these variables jointly determine market acceleration.
 
 ---
 
 # Hidden Market Regime
 
-Instead of manually defining
+Hidden Markov Models (HMM) are employed to infer latent market regimes from structural and dynamical features.
 
-- Uptrend
-- Downtrend
-- Sideways
+Current features include
 
-we allow Hidden Markov Models (HMM) to discover latent market states.
+* Pivot Return
+* Pivot Direction
+* Velocity
+* Acceleration
 
-Candidate features include
+Future work will incorporate
 
-- Pivot Return
-- Pivot Direction
-- Velocity
-- Acceleration
-- Order Book Force
+* OFI
+* Order Book Imbalance
+* Hump Overlap
+* Liquidity Features
 
-The learned hidden states are then interpreted as
-
-- Upward Breakout
-- Downward Breakout
-- Sideways / Mundane
-
-depending on their statistical characteristics.
+to discover hidden market regimes directly from market microstructure.
 
 ---
 
-# Long-Term Goal
+# Future Research
+
+Current roadmap
+
+* High-resolution order book reconstruction
+* Hump overlap analysis
+* Market force estimation
+* Hidden regime discovery
+* Multi-scale market dynamics
+* Event-driven price impact modeling
+
+---
+
+# Long-Term Vision
 
 The ultimate objective is **not merely to predict future prices**, but to derive a market equation of motion analogous to Newtonian mechanics.
 
 Specifically,
 
-\[
+[
 \boxed{
 \frac{d^2P}{dt^2}
-=
-f(\text{Order Book Features})
+=================
+
+f(\text{Market Microstructure})
 }
-\]
+]
 
-where
+where the function
 
-\[
+[
 f(\cdot)
-\]
+]
 
-is learned from market microstructure.
+is learned directly from order book dynamics.
 
-If validated, this framework provides a physically interpretable description of how liquidity, order flow, and market structure jointly drive price evolution.
+If validated, this framework provides an interpretable mathematical description of how liquidity, order flow, and market structure jointly determine price evolution.
+
+---
+
+# License
+
+This repository is intended for academic research and educational purposes.
