@@ -313,7 +313,7 @@ To illustrate, we choose a 1-day interval of **2025-12-23 ~ 2026-06-23** of BTC-
 
 Though exhibits a rather stable result, same on 1000 random seed test, the result is not satisfying.
 Shown in the figure
-![Structure](figure\fail_on_hmm_window.png)
+![HMM1](figure\fail_on_hmm_window.png)
 This figure shows that the HMM model though work well on capturing the market downward movemnt, it did not do well on capturing the upward-movement
 
 On the other hand, if we choose an interval that endows with **up and down** movement in the market, the result is satisfying,
@@ -328,7 +328,7 @@ The Mean Matrix,
 |    2.0         |           -0.099018      |     0.000000    |       66.205147        |
 
 The classification is shown in figure:
-![Structure](figure\success_on_hmm_window.png)                       
+![HMM2](figure\success_on_hmm_window.png)                       
 
 
 ## Robustness Analysis
