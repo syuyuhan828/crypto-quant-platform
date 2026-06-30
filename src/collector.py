@@ -41,6 +41,7 @@ class PionexCollector:
         self.save_to_db = save_to_db
         self.db = SupabaseDB() if self.save_to_db else None
         self.save_to_jsonl = save_to_jsonl
+        self.last_db_success_time = time.time()
 
         os.makedirs(self.output_dir, exist_ok=True)
 
@@ -206,6 +207,10 @@ class PionexCollector:
             return self.fetch_funding_rates()
 
         raise ValueError(f"Unknown api_name: {api_name}")
+    
+    def force_restart(self, reason: str):
+        print(f"[FATAL] {reason}", flush=True)
+        os._exit(1)
 
     # --------------------------------------------------
     # Main loop
@@ -225,7 +230,7 @@ class PionexCollector:
         # Railway (or any external monitor) can poll GET /health.
         start_health_server()
 
-        print("=== Pionex Collector Started ===")
+        print("=== Pionex Collector Started v2.0.1 ===")
         print(f"symbol: {self.symbol}")
         print(f"output_dir: {self.output_dir}")
         print("schedule:")
@@ -247,6 +252,9 @@ class PionexCollector:
             now = time.time()
             elapsed_sec = now - start_time
 
+            if self.save_to_db and time.time() - self.last_db_success_time > 20:
+                self.force_restart("No successful DB write for 20 seconds")
+
             if max_seconds is not None and elapsed_sec >= max_seconds:
                 print("Reached max_seconds. Collector stopped.")
                 break
@@ -257,14 +265,7 @@ class PionexCollector:
 
                 try:
                     result = self.fetch_one(api_name)
-
-                    # API 成功後立刻標記已執行，避免 DB 壞掉時狂打 API
-                    self.mark_run(api_name)
-
-                    # Notify the health-check server that a fetch just succeeded.
-                    health_state.record_fetch()
-
-                    db_row = self.client.flatten_for_db(result)
+                    db_row = self.client.flatten_for_db(result)                                      
 
                     if self.save_to_jsonl:
                         self.save_jsonl(api_name, db_row)
@@ -275,8 +276,15 @@ class PionexCollector:
                                 symbol=self.symbol,
                                 row=db_row,
                             )
-                        except Exception as db_error:
-                            print(f"[DB ERROR] {api_name}: {type(db_error).__name__}: {db_error}")
+                            self.last_db_success_time = time.time()
+                        except Exception as e:
+                            print(f"[DB ERROR] {api_name}: {type(e).__name__}: {e}", flush=True)
+                            self.force_restart(f"DB insert failed for {api_name}")
+                    
+                    # API 成功後立刻標記已執行，避免 DB 壞掉時狂打 API
+                    self.mark_run(api_name)
+                     # Notify the health-check server that a fetch just succeeded.
+                    health_state.record_fetch()
 
                     local_time = result["meta"]["local_response_time_utc"]
                     latency = result["meta"]["latency_ms"]
@@ -306,8 +314,10 @@ class PionexCollector:
                         print("Rate limited. Sleeping 10 seconds...")
                         time.sleep(10)
 
-                except Exception as e:
-                    print(f"[ERROR] {api_name}: {type(e).__name__}: {e}")
+                except Exception as db_error:
+                    print(f"[DB ERROR] {api_name}: {type(db_error).__name__}: {db_error}", flush=True)
+                    raise
+
 
             # 小睡一下，避免 while loop 吃滿 CPU
             time.sleep(0.1)
