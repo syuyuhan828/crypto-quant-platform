@@ -3,7 +3,7 @@ import numpy as np
 import mplfinance as mpf # experiment
 from get_data import get_klines
 
-def get_pivot(df: pd.DataFrame, show_plot: bool=False):
+def get_pivot(df: pd.DataFrame, show_plot: bool=False, ignore_last: bool=True):
 
     df = df.copy()
     numeric_cols = ["Open", "High", "Low", "Close", "Volume"]
@@ -89,6 +89,19 @@ def get_pivot(df: pd.DataFrame, show_plot: bool=False):
         df['pivot_high'] = df['hh_point']
         df['pivot_low'] = df['ref_ll']
 
+    if ignore_last:
+        last_pivot_high_idx = df[pd.notna(df["pivot_high"])].index[-1]
+        last_pivot_low_idx = df[pd.notna(df["pivot_low"])].index[-1]
+        print(last_pivot_high_idx, last_pivot_low_idx)
+        
+        if last_pivot_high_idx > last_pivot_low_idx:
+            print(f"[INFO]: Throw out last uncertain pivot in columns: pivot high, idx: {last_pivot_high_idx}")
+            df.loc[last_pivot_high_idx, "pivot_high"] = np.nan
+        else:
+            print(f"[INFO]: Throw out last uncertain pivot in columns: pivot low, idx: {last_pivot_low_idx}")
+            df.loc[last_pivot_low_idx, "pivot_low"] = np.nan
+
+
     if show_plot:
         plot_df = df[["Open", "High", "Low", "Close", "Volume"]].copy()
         addplots = [
@@ -108,11 +121,18 @@ def get_pivot(df: pd.DataFrame, show_plot: bool=False):
 
 if __name__ == "__main__":
     
-    # small time scale: 1 minute scale
-    start_ms = "2026-06-20 20:30:00"
-    end_ms = "2026-06-23 20:30:00"
+    # small time scale: 1 minute scale, may take longer to fetch data,
+    # start_ms = "2026-06-20 20:30:00"
+    # end_ms = "2026-06-23 20:30:00"
 
-    # 9s for 4Hr data
-    df = get_klines(start_time=start_ms, end_time=end_ms, is_experiment=False)
+    # # 9s for 4Hr data
+    # short_scale_df = get_klines(start_time=start_ms, end_time=end_ms, is_experiment=False)
 
-    pivot_df = get_pivot(df, show_plot=True)
+
+
+    # large time scale: 1 hour scale, faster, but less accurate
+    start = "2025-06-23"
+    end = "2026-06-23"
+    large_scale_df = get_klines(start=start, end=end, interval="1D", is_experiment=True)
+
+    pivot_df = get_pivot(large_scale_df, show_plot=True, ignore_last=True)
