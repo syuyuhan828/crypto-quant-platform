@@ -189,8 +189,7 @@ class PionexClient:
 
         response = {
             "meta": meta,
-            "data": raw.get("data"),
-            "raw": raw,
+            "data": raw.get("data")
         }
 
         return response
@@ -499,7 +498,6 @@ class PionexClient:
             "api_response_timestamp": meta["api_response_timestamp"],
             "api_response_time_utc": meta["api_response_time_utc"],
             "data": response["data"],
-            "raw": response["raw"],
         }
 
         if "trade_coverage" in response:
