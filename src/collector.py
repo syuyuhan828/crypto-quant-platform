@@ -294,7 +294,8 @@ class PionexCollector:
                         f"[OK] {local_time} | "
                         f"{api_name} | "
                         f"weight={weight} | "
-                        f"latency={latency}ms"
+                        f"latency={latency}ms |"
+                        "Using V3.0.1"
                     )
 
                     if api_name == "trades" and "trade_coverage" in result:
