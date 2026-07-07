@@ -230,7 +230,7 @@ class PionexCollector:
         # Railway (or any external monitor) can poll GET /health.
         start_health_server()
 
-        print("=== Pionex Collector Started v2.0.1 ===")
+        print("=== Pionex Collector Started v3.0.1 ===")
         print(f"symbol: {self.symbol}")
         print(f"output_dir: {self.output_dir}")
         print("schedule:")
