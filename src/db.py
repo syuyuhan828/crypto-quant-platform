@@ -59,7 +59,6 @@ class SupabaseDB:
             weight,
             params,
             data,
-            raw,
             trade_coverage
         )
         values (
@@ -75,7 +74,6 @@ class SupabaseDB:
             %(weight)s,
             %(params)s::jsonb,
             %(data)s::jsonb,
-            %(raw)s::jsonb,
             %(trade_coverage)s::jsonb
         );
         """
@@ -93,7 +91,6 @@ class SupabaseDB:
             "weight": row.get("weight"),
             "params": json.dumps(row.get("params"), ensure_ascii=False),
             "data": json.dumps(row.get("data"), ensure_ascii=False),
-            "raw": json.dumps(row.get("raw"), ensure_ascii=False),
             "trade_coverage": json.dumps(row.get("trade_coverage"), ensure_ascii=False)
             if row.get("trade_coverage") is not None
             else None,
