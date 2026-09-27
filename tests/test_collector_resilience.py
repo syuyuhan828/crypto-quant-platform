@@ -93,17 +93,22 @@ def test_ready_endpoint_tracks_committed_database_freshness():
         with patch("health_check.time.time", return_value=100.0), patch(
             "health_check._send_ntfy"
         ):
-            with urlopen(base + "/ready", timeout=2) as response:
-                assert json.load(response)["status"] == "ready"
+            for endpoint in ("/health", "/ready"):
+                with urlopen(base + endpoint, timeout=2) as response:
+                    assert json.load(response)["status"] == "ready"
 
             health_state.reset_for_tests(epoch_time=90.0, monotonic_time=0.0)
-            try:
-                urlopen(base + "/ready", timeout=2)
-            except HTTPError as error:
-                assert error.code == 503
-                assert json.load(error)["status"] == "stale"
-            else:
-                raise AssertionError("stale readiness must return HTTP 503")
+            for endpoint in ("/health", "/ready"):
+                try:
+                    urlopen(base + endpoint, timeout=2)
+                except HTTPError as error:
+                    assert error.code == 503
+                    assert json.load(error)["status"] == "stale"
+                else:
+                    raise AssertionError("stale readiness must return HTTP 503")
+
+            with urlopen(base + "/", timeout=2) as response:
+                assert json.load(response)["status"] == "alive"
     finally:
         server.shutdown()
         server.server_close()

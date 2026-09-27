@@ -40,7 +40,7 @@ def _send_ntfy(message: str) -> None:
 
 class _HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
-        if self.path in ("/", "/health"):
+        if self.path == "/":
             self._respond(
                 200,
                 {
@@ -51,7 +51,7 @@ class _HealthHandler(BaseHTTPRequestHandler):
             )
             return
 
-        if self.path == "/ready":
+        if self.path in ("/health", "/ready"):
             self._handle_ready()
             return
 
@@ -126,7 +126,7 @@ def start_health_server(
     thread.start()
 
     print(f"[HEALTH] Health server listening on port {actual_port}", flush=True)
-    print("[HEALTH] Liveness: /health | Readiness: /ready", flush=True)
+    print("[HEALTH] Liveness: / | Readiness: /health, /ready", flush=True)
 
     if return_server:
         return server, thread
