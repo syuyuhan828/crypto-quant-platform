@@ -60,27 +60,27 @@ class _HealthHandler(BaseHTTPRequestHandler):
     def _handle_ready(self) -> None:
         last_fetch, notification_sent = health_state.get_state()
         now = time.time()
+        stale_sec = getattr(self.server, "stale_sec", STALE_SEC)
 
         if last_fetch is None:
             age_sec = None
             is_stale = True
         else:
             age_sec = round(now - last_fetch, 2)
-            is_stale = age_sec > STALE_SEC
+            is_stale = age_sec > stale_sec
 
         if is_stale:
             body = {
                 "status": "stale",
                 "last_fetch_age_sec": age_sec,
-                "stale_threshold_sec": STALE_SEC,
+                "stale_threshold_sec": stale_sec,
             }
 
-            if not notification_sent:
-                health_state.mark_notification_sent()
+            if not notification_sent and health_state.claim_notification():
                 age_str = f"{age_sec}s" if age_sec is not None else "never"
                 _send_ntfy(
-                    "The data-collector process is alive, but no successful "
-                    f"fetch was recorded. Last successful fetch: {age_str} ago."
+                    "The data-collector process is alive, but no committed "
+                    f"database write was recorded. Last success: {age_str} ago."
                 )
 
             self._respond(503, body)
@@ -91,7 +91,7 @@ class _HealthHandler(BaseHTTPRequestHandler):
             {
                 "status": "ready",
                 "last_fetch_age_sec": age_sec,
-                "stale_threshold_sec": STALE_SEC,
+                "stale_threshold_sec": stale_sec,
             },
         )
 
@@ -107,10 +107,16 @@ class _HealthHandler(BaseHTTPRequestHandler):
         pass
 
 
-def start_health_server(port: int | None = None) -> threading.Thread:
-    actual_port = port or PORT
+def start_health_server(
+    port: int | None = None,
+    *,
+    stale_sec: int = STALE_SEC,
+    return_server: bool = False,
+) -> threading.Thread | tuple[HTTPServer, threading.Thread]:
+    actual_port = PORT if port is None else port
 
     server = HTTPServer(("0.0.0.0", actual_port), _HealthHandler)
+    server.stale_sec = stale_sec
 
     thread = threading.Thread(
         target=server.serve_forever,
@@ -122,4 +128,65 @@ def start_health_server(port: int | None = None) -> threading.Thread:
     print(f"[HEALTH] Health server listening on port {actual_port}", flush=True)
     print("[HEALTH] Liveness: /health | Readiness: /ready", flush=True)
 
+    if return_server:
+        return server, thread
+    return thread
+
+
+def run_stale_watchdog(
+    stop: threading.Event,
+    *,
+    stale_sec: float = STALE_SEC,
+    check_interval_sec: float = 1.0,
+    exit_func=os._exit,
+    notifier=None,
+    monotonic=time.monotonic,
+) -> None:
+    """Exit the process when committed DB writes stop advancing.
+
+    This runs outside the collector loop, so a permanently blocked psycopg
+    call cannot prevent the watchdog from firing.
+    """
+    if stale_sec <= 0 or check_interval_sec <= 0:
+        raise ValueError("watchdog intervals must be positive")
+    notifier = _send_ntfy if notifier is None else notifier
+    started_at = monotonic()
+    while not stop.wait(check_interval_sec):
+        last_success = health_state.get_monotonic_time()
+        age_sec = max(
+            0.0,
+            monotonic() - (
+                started_at if last_success is None else last_success
+            ),
+        )
+        if age_sec <= stale_sec:
+            continue
+        message = (
+            "No committed data-collector DB write for "
+            f"{age_sec:.1f}s; exiting so Railway can restart the service."
+        )
+        print(f"[FATAL] {message}", flush=True)
+        if health_state.claim_notification():
+            notifier(message)
+        exit_func(1)
+        return
+
+
+def start_stale_watchdog(
+    stop: threading.Event,
+    *,
+    stale_sec: float = STALE_SEC,
+    check_interval_sec: float = 1.0,
+) -> threading.Thread:
+    thread = threading.Thread(
+        target=run_stale_watchdog,
+        kwargs={
+            "stop": stop,
+            "stale_sec": stale_sec,
+            "check_interval_sec": check_interval_sec,
+        },
+        name="db-freshness-watchdog",
+        daemon=True,
+    )
+    thread.start()
     return thread

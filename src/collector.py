@@ -3,12 +3,13 @@
 import time
 import json
 import os
+import threading
 from typing import Any, Dict, Optional
 
 from Pionex_client import PionexClient, PionexAPIError
 from db import SupabaseDB
 import health_state
-from health_check import start_health_server
+from health_check import start_health_server, start_stale_watchdog
 
 
 class PionexCollector:
@@ -41,8 +42,6 @@ class PionexCollector:
         self.save_to_db = save_to_db
         self.db = SupabaseDB() if self.save_to_db else None
         self.save_to_jsonl = save_to_jsonl
-        self.last_db_success_time = time.time()
-
         os.makedirs(self.output_dir, exist_ok=True)
 
         # 每個 API 的抓取設定
@@ -135,10 +134,10 @@ class PionexCollector:
             return True
 
         # 後續執行：距離上次執行超過 interval 才執行
-        return (time.time() - last_run) >= interval
+        return (time.monotonic() - last_run) >= interval
 
     def mark_run(self, api_name: str) -> None:
-        self.last_run_time[api_name] = time.time()
+        self.last_run_time[api_name] = time.monotonic()
 
     # --------------------------------------------------
     # API call handlers
@@ -158,8 +157,6 @@ class PionexCollector:
         )
 
         # 這次抓取完成後，更新 last_trades_fetch_time_ms
-        self.last_trades_fetch_time_ms = result["meta"]["local_response_time_ms"]
-
         return result
 
     def fetch_indexes(self) -> Dict[str, Any]:
@@ -228,9 +225,11 @@ class PionexCollector:
 
         # Start the health-check HTTP server in a background thread so
         # Railway (or any external monitor) can poll GET /health.
+        watchdog_stop = threading.Event()
         start_health_server()
+        start_stale_watchdog(watchdog_stop)
 
-        print("=== Pionex Collector Started v3.0.1 ===")
+        print("=== Pionex Collector Started v3.1.0 ===")
         print(f"symbol: {self.symbol}")
         print(f"output_dir: {self.output_dir}")
         print("schedule:")
@@ -246,14 +245,11 @@ class PionexCollector:
         print("Press Ctrl+C to stop.")
         print()
 
-        start_time = time.time()
+        start_time = time.monotonic()
 
         while True:
-            now = time.time()
+            now = time.monotonic()
             elapsed_sec = now - start_time
-
-            if self.save_to_db and time.time() - self.last_db_success_time > 20:
-                self.force_restart("No successful DB write for 20 seconds")
 
             if max_seconds is not None and elapsed_sec >= max_seconds:
                 print("Reached max_seconds. Collector stopped.")
@@ -276,15 +272,24 @@ class PionexCollector:
                                 symbol=self.symbol,
                                 row=db_row,
                             )
-                            self.last_db_success_time = time.time()
-                        except Exception as e:
-                            print(f"[DB ERROR] {api_name}: {type(e).__name__}: {e}", flush=True)
-                            self.force_restart(f"DB insert failed for {api_name}")
+                        except Exception as error:
+                            print(
+                                f"[DB ERROR] {api_name}: "
+                                f"{type(error).__name__}: {error}",
+                                flush=True,
+                            )
+                            # SupabaseDB replaced the suspect connection.
+                            # Do not acknowledge a row that was not durable.
+                            continue
+                        health_state.record_fetch()
+
+                    if api_name == "trades":
+                        self.last_trades_fetch_time_ms = result["meta"][
+                            "local_response_time_ms"
+                        ]
                     
                     # API 成功後立刻標記已執行，避免 DB 壞掉時狂打 API
                     self.mark_run(api_name)
-                     # Notify the health-check server that a fetch just succeeded.
-                    health_state.record_fetch()
 
                     local_time = result["meta"]["local_response_time_utc"]
                     latency = result["meta"]["latency_ms"]
@@ -295,7 +300,7 @@ class PionexCollector:
                         f"{api_name} | "
                         f"weight={weight} | "
                         f"latency={latency}ms |"
-                        "Using V3.0.1"
+                        "Using V3.1.0"
                     )
 
                     if api_name == "trades" and "trade_coverage" in result:
@@ -322,6 +327,8 @@ class PionexCollector:
 
             # 小睡一下，避免 while loop 吃滿 CPU
             time.sleep(0.1)
+
+        watchdog_stop.set()
 
 
 if __name__ == "__main__":

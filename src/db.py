@@ -19,8 +19,16 @@ class SupabaseDB:
     - 把 collector 抓到的 raw market data 寫進 Supabase Postgres。
     """
 
-    def __init__(self, database_url: Optional[str] = None):
+    def __init__(
+        self,
+        database_url: Optional[str] = None,
+        *,
+        connect_timeout: int = 5,
+        statement_timeout_ms: int = 5_000,
+    ):
         self.database_url = database_url or os.getenv("SUPABASE_DB_URL")
+        self.connect_timeout = connect_timeout
+        self.statement_timeout_ms = statement_timeout_ms
         
 
         if not self.database_url:
@@ -28,8 +36,33 @@ class SupabaseDB:
                 "Missing SUPABASE_DB_URL. Please set it in your .env file."
             )
 
-        self.conn = psycopg.connect(self.database_url)
-        self.conn.autocommit = True
+        self.conn = self._connect()
+
+    def _connect(self):
+        conn = psycopg.connect(
+            self.database_url,
+            connect_timeout=self.connect_timeout,
+            application_name="pionex_data_collector",
+            options=(
+                f"-c statement_timeout={self.statement_timeout_ms} "
+                "-c lock_timeout=3000 "
+                "-c idle_in_transaction_session_timeout=10000"
+            ),
+            keepalives=1,
+            keepalives_idle=15,
+            keepalives_interval=5,
+            keepalives_count=3,
+        )
+        conn.autocommit = True
+        return conn
+
+    def reconnect(self) -> None:
+        """Discard a suspect connection and create a fresh one."""
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+        self.conn = self._connect()
 
     def close(self) -> None:
         self.conn.close()
@@ -96,5 +129,12 @@ class SupabaseDB:
             else None,
         }
 
-        with self.conn.cursor() as cur:
-            cur.execute(sql, payload)
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql, payload)
+        except psycopg.Error:
+            # Do not retry the same INSERT: if the response was lost after the
+            # commit, retrying could create an ambiguous duplicate row. The
+            # collector will fetch again using the fresh connection.
+            self.reconnect()
+            raise
