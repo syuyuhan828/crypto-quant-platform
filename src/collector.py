@@ -213,7 +213,12 @@ class PionexCollector:
     # Main loop
     # --------------------------------------------------
 
-    def run(self, max_seconds: Optional[int] = None) -> None:
+    def run(
+        self,
+        max_seconds: Optional[int] = None,
+        *,
+        start_health_server_thread: bool = True,
+    ) -> None:
         """
         啟動 collector。
 
@@ -226,7 +231,8 @@ class PionexCollector:
         # Start the health-check HTTP server in a background thread so
         # Railway (or any external monitor) can poll GET /health.
         watchdog_stop = threading.Event()
-        start_health_server()
+        if start_health_server_thread:
+            start_health_server()
         start_stale_watchdog(watchdog_stop)
 
         print("=== Pionex Collector Started v3.1.0 ===")
@@ -331,12 +337,45 @@ class PionexCollector:
         watchdog_stop.set()
 
 
+def create_collector_with_retry(
+    factory,
+    *,
+    sleep=time.sleep,
+    max_backoff_sec: float = 60.0,
+):
+    """Keep startup dependency failures inside one Railway process.
+
+    Railway limits failure restarts. A temporary database outage must not burn
+    through that allowance before the dependency recovers.
+    """
+    if max_backoff_sec <= 0:
+        raise ValueError("max_backoff_sec must be positive")
+    backoff = 1.0
+    while True:
+        try:
+            return factory()
+        except Exception as error:
+            print(
+                "[STARTUP ERROR] Collector initialization failed: "
+                f"{type(error).__name__}; retrying in {backoff:.0f}s",
+                flush=True,
+            )
+            sleep(backoff)
+            backoff = min(backoff * 2, max_backoff_sec)
+
+
 if __name__ == "__main__":
-    collector = PionexCollector(
-        symbol="BTC_USDT_PERP",
-        output_dir="data/raw",
-        save_to_db=True,
-        save_to_jsonl=False,
+    # Bind the health port before dependency initialization. During a database
+    # outage, /ready remains stale while this process retries without exhausting
+    # Railway's finite crash-restart allowance.
+    start_health_server()
+    collector = create_collector_with_retry(
+        lambda: PionexCollector(
+            symbol="BTC_USDT_PERP",
+            output_dir="data/raw",
+            save_to_db=True,
+            save_to_jsonl=False,
+        )
     )
 
-    collector.run(max_seconds=None)
+    collector.run(max_seconds=None, start_health_server_thread=False)

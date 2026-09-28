@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import health_state  # noqa: E402
 from db import SupabaseDB  # noqa: E402
+from collector import create_collector_with_retry  # noqa: E402
 from health_check import (  # noqa: E402
     start_health_server,
     run_stale_watchdog,
@@ -85,6 +86,30 @@ def test_independent_watchdog_notifies_and_exits_when_db_writes_are_stale():
     assert "21.0" in messages[0]
 
 
+def test_collector_startup_retries_without_exiting_the_process():
+    attempts = iter([
+        psycopg.OperationalError("database unavailable"),
+        OSError("network unavailable"),
+        "collector",
+    ])
+    sleeps: list[float] = []
+
+    def factory():
+        result = next(attempts)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    result = create_collector_with_retry(
+        factory,
+        sleep=sleeps.append,
+        max_backoff_sec=10,
+    )
+
+    assert result == "collector"
+    assert sleeps == [1.0, 2.0]
+
+
 def test_ready_endpoint_tracks_committed_database_freshness():
     health_state.reset_for_tests(epoch_time=100.0, monotonic_time=10.0)
     server, worker = start_health_server(port=0, stale_sec=5, return_server=True)
@@ -120,5 +145,5 @@ def test_railway_uses_freshness_readiness_and_failure_restart_policy():
     deploy = config["deploy"]
     assert deploy["healthcheckPath"] == "/ready"
     assert deploy["restartPolicyType"] == "ON_FAILURE"
-    assert deploy["restartPolicyMaxRetries"] == 10
+    assert deploy["restartPolicyMaxRetries"] == 1000
 
